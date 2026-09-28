@@ -1,0 +1,24 @@
+# ==== Visual Studio 构建产物 ====
+x64/
+Debug/
+Release/
+*.obj
+*.ilk
+*.pdb
+*.exe
+*.idb
+*.log
+
+# ==== VS 本地状态（换机器就失效，不该提交）====
+.vs/
+*.user
+*.suo
+*.sln.docstates
+*.VC.db
+*.VC.opendb
+.vscode/
+
+# ==== 杂项 ====
+*.tmp
+Thumbs.db
+desktop.ini

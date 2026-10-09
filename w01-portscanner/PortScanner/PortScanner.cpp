@@ -25,6 +25,9 @@ static CRITICAL_SECTION g_printLock;            // 保护屏幕输出，避免�
 static LONG          g_openCount = 0;           // 已发现的开放端口数
 
 // 扫描单个端口：返回 1 表示开放（TCP 连接成功），0 表示关闭或不可达
+//
+// 判定方式：connect 的初次返回只表明“同步失败”或“已开始异步操作”；
+// 最终结果由内核在 socket 上记录，必须通过 getsockopt(SO_ERROR)（或等效接口）读取。
 static int ScanPort(const char* ip, int port, int timeoutMs)
 {
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -60,6 +63,10 @@ static int ScanPort(const char* ip, int port, int timeoutMs)
         tv.tv_sec = timeoutMs / 1000;
         tv.tv_usec = (timeoutMs % 1000) * 1000;
 
+        // I/O 多路复用：检测一组文件描述符（socket）是否可读/可写/有异常，
+        // 报告的是“就绪状态”（可写/可读/异常），不报告具体结果。
+        // Windows 下它是 Winsock（用户态 DLL）提供的接口，真正的等待由内核网络组件（AFD 驱动）完成。
+        // 返回值三种情况：> 0 表示至少一个有结果（可写）、0 表示超时、< 0 表示出错。
         rc = select(0, NULL, &writeSet, NULL, &tv);
         if (rc <= 0) {
             // 0 = 超时（连接未完成）；< 0 = 出错。都视为端口未开放
@@ -67,7 +74,8 @@ static int ScanPort(const char* ip, int port, int timeoutMs)
             return 0;
         }
 
-        // 可写后还要检查套接字错误码，为 0 才算真正连上
+        // 可写后还要检查套接字错误码，为 0 才算真正连上。
+        // 读取该 socket 上内核记录的“挂起错误”值：内核把异步完成/失败的结果保存在 socket 结构上。
         int sockErr = 0, len = sizeof(sockErr);
         if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&sockErr, &len) != 0 || sockErr != 0) {
             closesocket(s);

@@ -1,0 +1,9 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="learn.vcxproj" Id="b4e83d17-6a29-4c58-9d31-5f7a2c8e6b04" />
+  <Project Path="recognizer.vcxproj" Id="3a7f1c2e-5d64-4b9a-8f21-0c6d9e5b7a13" />
+  <Project Path="bug_case_A_fixed.vcxproj" Id="7c2d5e91-4b83-4a17-9f6e-2d8b1c4e7f52" />
+</Solution>

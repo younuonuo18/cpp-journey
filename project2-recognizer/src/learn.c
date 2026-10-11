@@ -1,94 +1,133 @@
 ﻿#define _CRT_SECURE_NO_WARNINGS
 
+#include <math.h>
 #include <stdio.h>
 
-#define FIELD_COUNT 6      /* 一行 6 个字段 */
-#define FIELD_MAX   64     /* 每个字段最多 63 字符 + '\0' */
+#define FEATURE_COUNT 5
+#define FIELD_COUNT   6
+#define FIELD_MAX     64
 
-/* 把一行 CSV 按半角逗号切成 6 段并打印
- * 返回码：0 = 成功；5 = 字段个数不符
- * 注意：本函数会修改传入的那一行（去掉行尾换行符）。 */
-int split_and_print(char line[])
+typedef struct {
+    double features[FEATURE_COUNT];   /* 5 个静态特征 */
+    int    label;                     /* 0 = 良性，1 = 可疑 */
+} Sample;
+
+/* 把一行按半角逗号切成 6 段
+ * 返回码：0 = 成功；5 = 字段个数不符 */
+int split_fields(char line[], char fields[][FIELD_MAX])
 {
-    char fields[FIELD_COUNT][FIELD_MAX];
-    char names[FIELD_COUNT][16] = {
-        "file_size", "string_count", "entropy",
-        "byte_00_ratio", "byte_ff_ratio", "label"
-    };
-    int count = 1;     /* 字段个数 = 逗号数 + 1 */
-    int f = 0;         /* 当前第几个字段 */
-    int k = 0;         /* 当前字段已存几个字符 */
-    int i;
+    int count = 1, f = 0, k = 0, i;
 
-    for (i = 0; i < FIELD_COUNT; i++) {      /* 先清空每个字段，避免打印未初始化内容 */
-        fields[i][0] = '\0';
-    }
+    for (i = 0; i < FIELD_COUNT; i++) fields[i][0] = '\0';
 
-    /* ① 去掉行尾换行符 */
-    for (i = 0; line[i] != '\0'; i++) {
+    for (i = 0; line[i] != '\0'; i++) {          /* ① 去掉行尾换行符 */
         if (line[i] == '\n') { line[i] = '\0'; break; }
     }
 
-    /* ② 逐字符扫描：遇到半角逗号就切到下一个字段。
-     *    即使字段已经装不下（f >= FIELD_COUNT），也继续数逗号 ——
-     *    这样错误信息里的"实际几个"才准确；但绝不再写入 fields。 */
-    for (i = 0; line[i] != '\0'; i++) {
+    for (i = 0; line[i] != '\0'; i++) {          /* ② 逐字符切分 */
         if (line[i] == ',') {
-            if (f < FIELD_COUNT) {                       /* 还装得下 → 给字段收尾 */
-                fields[f][k] = '\0';
-            }
+            if (f < FIELD_COUNT) fields[f][k] = '\0';
             count++;
             f++;
             k = 0;
         }
         else {
-            if (f < FIELD_COUNT && k < FIELD_MAX - 1) {  /* 装不下就跳过，不越界写 */
-                fields[f][k] = line[i];
-                k++;
-            }
-            /* 字段超过 63 字符时丢弃多余字符，保证不越界 */
+            if (f < FIELD_COUNT && k < FIELD_MAX - 1) { fields[f][k] = line[i]; k++; }
         }
     }
+    if (f < FIELD_COUNT) fields[f][k] = '\0';    /* ③ 最后一段收尾 */
 
-    /* ③ 最后一个字段收尾（f 可能已等于 FIELD_COUNT，必须先判断） */
-    if (f < FIELD_COUNT) {
-        fields[f][k] = '\0';
-    }
-
-    /* ④ 校验字段个数 */
-    if (count != FIELD_COUNT) {
+    if (count != FIELD_COUNT) {                  /* ④ 字段数校验 */
         printf("字段个数不符：应有 %d 个，实际 %d 个\n", FIELD_COUNT, count);
         return 5;
-    }
-
-    for (i = 0; i < FIELD_COUNT; i++) {
-        printf("[%d] %-16s = %s\n", i, names[i], fields[i]);
     }
     return 0;
 }
 
-/* main：一次跑 5 个文件（教材例 6.4 的"二维字符数组 + for 循环"写法） */
+/* 把 6 段文本转成数值装进 Sample
+ * 返回码：0 = 成功；7 = 非数值/非有限值；8 = string_count 非非负整数；9 = 非法标签 */
+int parse_sample(char fields[][FIELD_MAX], Sample* s)
+{
+    double v;
+    double lv;              /* label 专用变量，避免与上面的 v 混用 */
+    int i;
+
+    for (i = 0; i < FEATURE_COUNT; i++) {
+        if (sscanf(fields[i], "%lf", &v) != 1) {          /* 第一层：格式 */
+            printf("第 %d 个字段 \"%s\" 不是合法数值\n", i + 1, fields[i]);
+            return 7;
+        }
+        if (!isfinite(v)) {                                /* 第二层：语义 */
+            printf("第 %d 个字段 \"%s\" 是非有限值（nan/inf）\n", i + 1, fields[i]);
+            return 7;
+        }
+        s->features[i] = v;
+    }
+
+    /* string_count 必须是非负整数 */
+    if (s->features[1] < 0.0 || s->features[1] != floor(s->features[1])) {
+        printf("string_count = %g 必须是非负整数\n", s->features[1]);
+        return 8;
+    }
+
+    /* label：先用 %lf 读，再判整数，最后判取值 */
+    if (sscanf(fields[5], "%lf", &lv) != 1) {
+        printf("label \"%s\" 不是合法数值\n", fields[5]);
+        return 9;
+    }
+    if (!isfinite(lv)) {
+        printf("label \"%s\" 是非有限值\n", fields[5]);
+        return 9;
+    }
+    if (lv != floor(lv) || (lv != 0.0 && lv != 1.0)) {
+        printf("label = %g 非法（只允许整数 0 或 1）\n", lv);
+        return 9;
+    }
+    s->label = (int)lv;
+
+    return 0;
+}
+
+void print_sample(const Sample* s)
+{
+    int i;
+    printf("features = [");
+    for (i = 0; i < FEATURE_COUNT; i++) {
+        printf("%s%g", (i == 0) ? "" : ", ", s->features[i]);
+    }
+    printf("]  label = %d\n", s->label);
+}
+
 int main(void)
 {
-    char paths[5][128] = {          /* 128 而不是 64：给长路径留余量 */
+    char paths[6][128] = {
         "..\\data\\train.csv",
-        "..\\tests\\invalid\\T13_extra_column.csv",
-        "..\\tests\\invalid\\T07_missing_column.csv",
         "..\\tests\\invalid\\T20_extra_whitespace.csv",
-        "..\\tests\\invalid\\T13b_eight_columns.csv"
+        "..\\tests\\invalid\\T06_nonnumeric.csv",
+        "..\\tests\\invalid\\T11_nonfinite.csv",
+        "..\\tests\\invalid\\T14_fractional_string_count.csv",
+        "..\\tests\\invalid\\T18_non_integer_label.csv"
     };
+    char fields[FIELD_COUNT][FIELD_MAX];
+    char line[1024];
     FILE* fp;
-    char  line[1024];
-    int   i;
+    Sample s;
+    int i, rc;
 
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 6; i++) {
         printf("\n===== %s =====\n", paths[i]);
         fp = fopen(paths[i], "r");
         if (fp == NULL) { printf("打开文件失败\n"); continue; }
         if (fgets(line, sizeof line, fp) == NULL) { fclose(fp); printf("文件里没有内容\n"); continue; }
         if (fgets(line, sizeof line, fp) == NULL) { fclose(fp); printf("没有数据行\n"); continue; }
         fclose(fp);
-        printf("返回码 = %d\n", split_and_print(line));
+
+        rc = split_fields(line, fields);
+        if (rc != 0) { printf("split_fields 返回码 = %d\n", rc); continue; }
+
+        rc = parse_sample(fields, &s);
+        printf("parse_sample 返回码 = %d\n", rc);
+        if (rc == 0) print_sample(&s);
     }
     return 0;
 }

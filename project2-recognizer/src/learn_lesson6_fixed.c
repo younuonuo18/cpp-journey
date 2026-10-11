@@ -52,6 +52,7 @@ int parse_sample(char fields[][FIELD_MAX], Sample* s, int has_label)
     int i;
 
     for (i = 0; i < FEATURE_COUNT; i++) {
+        if (fields[i][0] == '\0') { printf("第 %d 个字段是空的\n", i + 1); return 6; }
         if (sscanf(fields[i], "%lf", &v) != 1) { printf("第 %d 个字段 \"%s\" 不是合法数值\n", i + 1, fields[i]); return 7; }
         if (!isfinite(v)) { printf("第 %d 个字段 \"%s\" 是非有限值（nan/inf）\n", i + 1, fields[i]); return 7; }
         s->features[i] = v;
@@ -65,6 +66,7 @@ int parse_sample(char fields[][FIELD_MAX], Sample* s, int has_label)
 
     if (!has_label) { s->label = -1; return 0; }      /* 待预测数据没有真实标签 */
 
+    if (fields[5][0] == '\0') { printf("label 字段是空的\n"); return 6; }
     if (sscanf(fields[5], "%lf", &lv) != 1) { printf("label \"%s\" 不是合法数值\n", fields[5]); return 9; }
     if (!isfinite(lv)) { printf("label \"%s\" 是非有限值\n", fields[5]); return 9; }
     if (lv != floor(lv) || (lv != 0.0 && lv != 1.0)) { printf("label = %g 非法（只允许整数 0 或 1）\n", lv); return 9; }
